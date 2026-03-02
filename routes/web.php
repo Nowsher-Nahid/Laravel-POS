@@ -10,6 +10,7 @@ use App\Livewire\Items\EditItem;
 use App\Livewire\Items\ListItems;
 use App\Livewire\Management\ListPaymentMethods;
 use App\Livewire\Management\ListUsers;
+use App\Livewire\Pos;
 use App\Livewire\Sales\ListSales;
 use Illuminate\Support\Facades\Route;
 
@@ -38,6 +39,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/manage-payment-methods', ListPaymentMethods::class)->name('payment-methods.index');
     Route::get('/manage-sales', ListSales::class)->name('sales.index');
     Route::get('/manage-customers', ListCustomers::class)->name('customers.index');
+
+    Route::get('/pos', Pos::class)->name('pos');
+
 });
 
 require __DIR__.'/settings.php';
