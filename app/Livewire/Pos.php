@@ -6,7 +6,9 @@ use App\Models\Customer;
 use App\Models\Inventory;
 use App\Models\Item;
 use App\Models\PaymentMethod;
-use Filament\Notifications\Notification;
+use App\Models\Sale;
+use App\Models\SaleItem;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -17,245 +19,268 @@ class Pos extends Component
     public $paymentMethods;
     public $search = '';
     public $cart = [];
-    // public $cart = [
-    //     [
-    //         'id' => 1,
-    //         'name' => 'Sample Item',
-    //         'quantity' => 2,
-    //         'price' => 19.99,
-    //     ],
-    //     [
-    //         'id' => 2,
-    //         'name' => 'Another Item',
-    //         'quantity' => 10,
-    //         'price' => 9.99,
-    //     ],
-    //     [
-    //         'id' => 3,
-    //         'name' => 'Third Item',
-    //         'quantity' => 3,
-    //         'price' => 5.99,
-    //     ],
-    // ];
 
     // checkout properties
     public $customer_id = null;
     public $payment_method_id = null;
     public $paid_amount = 0;
-    public $discount_amount = 0; //Flat amount, not %
+    public $discount_amount = 0; // Flat amount
 
     public function mount()
     {
         $this->items = Item::with('inventory')
-                            ->where('is_active', true)
-                            ->whereHas('inventory', function ($query) {
-                                $query->where('quantity', '>', 0);
-                            })
-                            ->get();
+            ->where('is_active', true)
+            ->whereHas('inventory', fn ($q) => $q->where('quantity', '>', 0))
+            ->get();
+
         $this->customers = Customer::all();
         $this->paymentMethods = PaymentMethod::all();
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | 🔥 GLOBAL SWAL HELPER (CLEAN)
+    |--------------------------------------------------------------------------
+    */
+    protected function swal($title, $message = '', $icon = 'success')
+    {
+        $this->dispatch('swal', [
+            'title' => $title,
+            'message' => $message,
+            'icon' => $icon,
+        ]);
+    }
 
-    // CART FUNCTIONS STARTS --------------------------------------------------------------------------
-
-    // This function adds an item to the shopping cart.
-    // It handles: =>
-
-    // 1. Checking if the item exists
-    // 2. Checking inventory
-    // 3. Updating the cart quantity if item already exists
-    // 4. Adding a new item if it doesn’t exist
-    // 5. Updating inventory
-    // 6. Sending notifications
-
-    public function addToCart($itemId) {
-
+    /*
+    |--------------------------------------------------------------------------
+    | 🛒 ADD TO CART
+    |--------------------------------------------------------------------------
+    */
+    public function addToCart($itemId)
+    {
         $item = $this->items->firstWhere('id', $itemId);
 
-        // If the item is not found, show notification and return
-        if(!$item) {
-            Notification::make()
-                ->title('Item Not Found')
-                ->body('The selected item could not be found.')
-                ->danger()
-                ->send();
+        if (!$item) {
+            $this->swal('Item Not Found', 'The selected item could not be found.', 'error');
             return;
         }
 
-        // If inventory does not have enough quantity, show notification and return
-        if($item->inventory->quantity <= 0) {
-            Notification::make()
-                ->title('Out of Stock')
-                ->body('This item is currently out of stock and cannot be added to the cart.')
-                ->danger()
-                ->send();
+        if ($item->inventory->quantity <= 0) {
+            $this->swal('Out of Stock', 'This item is currently out of stock.', 'error');
             return;
         }
 
-        // // If item is already in cart, update quantity. (Filter the cart to find the item by ID and match it with the provided itemId)
-        // $cartItem = array_filter($this->cart, function ($cartItem) use ($itemId) {
-        //     return $cartItem['id'] == $itemId;
-        // });
-
-        // // If item is found in cart, increment quantity
-        // if (!empty($cartItem)) {
-        //     $key = key($cartItem);
-        //     $this->cart[$key]['quantity'] += 1;
-        // } else {
-        //     // If item is not in cart, add it
-        //     $this->cart[] = [
-        //         'id' => $item->id,
-        //         'name' => $item->name,
-        //         'quantity' => 1,
-        //         'price' => $item->selling_price,
-        //     ];
-        // }
-
-        // Use Laravel Collection to check if item is in cart
-        $cartIndex = collect($this->cart)->search(fn($cartItem) => $cartItem['id'] == $itemId);
+        $cartIndex = collect($this->cart)->search(
+            fn ($cartItem) => $cartItem['id'] == $itemId
+        );
 
         if ($cartIndex !== false) {
-            // Increment quantity if already in cart
             $this->cart[$cartIndex]['quantity']++;
         } else {
-            // Add new item to cart
             $this->cart[] = [
                 'id' => $item->id,
                 'name' => $item->name,
+                'sku' => $item->sku,
                 'quantity' => 1,
                 'price' => $item->selling_price,
             ];
         }
-        
-        // Decrease inventory quantity
+
+        // decrease stock
         $item->inventory->decrement('quantity', 1);
 
-        // Show success notification
-        Notification::make()
-            ->title('Added to Cart')
-            ->body("{$item->name} has been added to the cart.")
-            ->success()
-            ->send();
+        $this->swal('Added!', "{$item->name} added to cart.", 'success');
     }
 
-    //Remove item from cart
-    public function removeFromCart($index) {
-        if (isset($this->cart[$index])) {
-            $cartItem = $this->cart[$index];
-            
-            // Increase inventory quantity back            
-            $item = Item::find($cartItem['id']);
-            if ($item) {
-                $item->inventory->increment('quantity', $cartItem['quantity']);
+    /*
+    |--------------------------------------------------------------------------
+    | ❌ REMOVE FROM CART
+    |--------------------------------------------------------------------------
+    */
+    public function removeFromCart($index)
+    {
+        if (!isset($this->cart[$index])) return;
+
+        $cartItem = $this->cart[$index];
+        $item = Item::find($cartItem['id']);
+
+        if ($item) {
+            $item->inventory->increment('quantity', $cartItem['quantity']);
+        }
+
+        unset($this->cart[$index]);
+        $this->cart = array_values($this->cart);
+
+        $this->swal('Removed!', "{$cartItem['name']} removed from cart.", 'success');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 🔄 UPDATE QUANTITY
+    |--------------------------------------------------------------------------
+    */
+    public function updateQuantity($index, $quantity)
+    {
+        $quantity = max(1, (int) $quantity);
+
+        if (!isset($this->cart[$index])) return;
+
+        $cartItem = $this->cart[$index];
+        $item = Item::find($cartItem['id']);
+
+        if (!$item) return;
+
+        $currentCartQty = $cartItem['quantity'];
+        $change = $quantity - $currentCartQty;
+
+        // check stock
+        if ($change > 0 && $item->inventory->quantity < $change) {
+            $this->swal(
+                'Insufficient Stock',
+                "Only {$item->inventory->quantity} units available.",
+                'warning'
+            );
+            return;
+        }
+
+        // adjust inventory
+        if ($change > 0) {
+            $item->inventory->decrement('quantity', $change);
+        } elseif ($change < 0) {
+            $item->inventory->increment('quantity', abs($change));
+        }
+
+        $this->cart[$index]['quantity'] = $quantity;
+
+        $this->swal(
+            'Cart Updated',
+            "{$cartItem['name']} quantity updated to {$quantity}.",
+            'success'
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 💳 CHECKOUT
+    |--------------------------------------------------------------------------
+    */
+    public function checkout()
+    {
+        if (empty($this->cart)) {
+            $this->swal('Cart is Empty!', 'Please add items first.', 'warning');
+            return;
+        }
+
+        if ($this->paid_amount < $this->total) {
+            $this->swal(
+                'Insufficient Payment!',
+                'Paid amount is less than total.',
+                'warning'
+            );
+            return;
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $sale = Sale::create([
+                'customer_id' => $this->customer_id,
+                'payment_method_id' => $this->payment_method_id,
+                'total_amount' => $this->total,
+                'paid_amount' => $this->paid_amount,
+                'discount' => $this->discount_amount,
+            ]);
+
+            foreach($this->cart as $cartItem) {
+                SaleItem::create([
+                    'sale_id' => $sale->id,
+                    'item_id' => $cartItem['id'],
+                    'quantity' => $cartItem['quantity'],
+                    'price' => $cartItem['price'],
+                ]);
+
+                // Update the stock
+                Inventory::where('item_id', $cartItem['id'])
+                    ->decrement('quantity', $cartItem['quantity']);
             }
 
-            // Remove item from cart
-            unset($this->cart[$index]);
-            $this->cart = array_values($this->cart); // Reindex the cart array 
-            // After updating quantity
-            $this->cart = $this->cart;
+            DB::commit();
 
-            // Show success notification
-            Notification::make()
-                ->title('Removed from Cart')
-                ->body("{$cartItem['name']} has been removed from the cart.")
-                ->success()
-                ->send();
+            // reset POS
+            $this->cart = [];
+            $this->search = '';
+            $this->customer_id = null;
+            $this->payment_method_id = null;
+            $this->paid_amount = 0;
+            $this->discount_amount = 0;
+
+            // ✅ success example
+            $this->swal('Success!', 'Sale completed successfully.', 'success');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            $this->swal(
+                'Checkout Failed!',
+                $e->getMessage(), // 👈 shows real error
+                'error'
+            );
         }
     }
 
-    // Update quantity of an item in the cart
-    public function updateQuantity($index, $quantity) {
-        $quantity = max(1, (int)$quantity); // Ensure quantity is at least 1
+    /*
+    |--------------------------------------------------------------------------
+    | 🔍 FILTERED ITEMS
+    |--------------------------------------------------------------------------
+    */
+    #[Computed]
+    public function filteredItems()
+    {
+        if (empty($this->search)) return $this->items;
 
-        if (isset($this->cart[$index])) {
-            $cartItem = $this->cart[$index];
-            $item = Item::find($cartItem['id']);
-            if ($item) {
-                $currentCartQuantity = $cartItem['quantity'];
-                $quantityChange = $quantity - $currentCartQuantity;
-
-                // Check if inventory can accommodate the quantity change
-                if ($quantityChange > 0 && $item->inventory->quantity < $quantityChange) {
-                    // Update cart quantity
-                    $this->cart = $this->cart;
-                    Notification::make()
-                        ->title('Insufficient Stock')
-                        ->body("Cannot update quantity. Only {$item->inventory->quantity} units available in stock.")
-                        ->danger()
-                        ->send();
-                    return;
-                }
-
-                // Update inventory based on quantity change
-                if ($quantityChange > 0) {
-                    $item->inventory->decrement('quantity', $quantityChange);
-                } elseif ($quantityChange < 0) {
-                    $item->inventory->increment('quantity', abs($quantityChange));
-                }
-
-                // Update cart quantity
-                $this->cart[$index]['quantity'] = $quantity;
-
-                // After updating quantity
-                $this->cart = $this->cart;
-
-                // Show success notification
-                Notification::make()
-                    ->title('Cart Updated')
-                    ->body("Quantity for {$cartItem['name']} has been updated to {$quantity}.")
-                    ->success()
-                    ->send();
-            }
-        }
+        return $this->items->filter(fn ($item) =>
+            str_contains(strtolower($item->name), strtolower($this->search)) ||
+            str_contains(strtolower($item->sku), strtolower($this->search))
+        );
     }
 
-    // CART FUNCTIONS ENDS --------------------------------------------------------------------------
-
+    /*
+    |--------------------------------------------------------------------------
+    | 💰 TOTALS
+    |--------------------------------------------------------------------------
+    */
     #[Computed]
-    public function filteredItems() {
-
-        if (empty($this->search)) {
-            return $this->items;
-        }
-
-        return $this->items->filter(function ($item) {
-            return str_contains(strtolower($item->name), strtolower($this->search)) ||
-                   str_contains(strtolower($item->sku), strtolower($this->search));
-        });
+    public function subTotal()
+    {
+        return collect($this->cart)->sum(
+            fn ($item) => $item['quantity'] * $item['price']
+        );
     }
 
     #[Computed]
-    public function subTotal() {        
-        return collect($this->cart)->sum(function ($cartItem) {
-            return $cartItem['quantity'] * $cartItem['price'];
-        });
+    public function tax()
+    {
+        return $this->subTotal * 0.15;
     }
 
     #[Computed]
-    public function tax() {
-        return $this->subTotal * 0.15; // Assuming a fixed tax rate of 15%
-    }
-
-    #[Computed]
-    public function totalBeforeDiscount() {
+    public function totalBeforeDiscount()
+    {
         return $this->subTotal + $this->tax;
     }
 
     #[Computed]
-    public function total() {
+    public function total()
+    {
         return max(0, $this->totalBeforeDiscount - $this->discount_amount);
     }
 
     #[Computed]
-    public function change() {
-        if ($this->paid_amount < $this->total) {
-            return 0;
-        }
+    public function change()
+    {
+        if ($this->paid_amount < $this->total) return 0;
         return max(0, $this->paid_amount - $this->total);
     }
-    
+
     public function render()
     {
         return view('livewire.pos');

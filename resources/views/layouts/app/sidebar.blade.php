@@ -124,9 +124,36 @@
         </flux:header>
 
         {{ $slot }}
-        @livewire('notifications') {{-- Only required if you wish to send flash notifications --}}
 
         @filamentScripts
         @fluxScripts
+
+        @livewire('notifications')
+
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <script>
+            document.addEventListener('livewire:init', () => {
+                Livewire.on('swal', (event) => {
+                    const data = Array.isArray(event) ? event[0] : event;
+                    
+                    Swal.fire({
+                        title: data.title || 'Notification',
+                        text: data.message || '',
+                        icon: data.icon || 'success',
+                        timer: 3000,
+                        timerProgressBar: true,
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        // These ensure the alert doesn't close if the user hovers over it
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
+                });
+            });
+        </script>
+
     </body>
 </html>

@@ -8,9 +8,9 @@
                         focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors 
                         dark:bg-neutral-800 dark:border-blue-700 dark:text-gray-100">
 
-            <div class="mt-2 p-4 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg shadow-md">
+            {{-- <div class="mt-2 p-4 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg shadow-md">
                 Success message demo
-            </div>
+            </div> --}}
         </div>
 
         <!-- Products Grid -->
@@ -18,13 +18,13 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
                 <!-- Items -->
-                @foreach ($this->filteredItems as $item)
+                @forelse ($this->filteredItems as $item)
                     
                     <div class="bg-white dark:bg-neutral-800 rounded-2xl shadow-lg overflow-hidden ">
                         <div class="p-4">
                             
                             <div class="w-full h-32 bg-gray-200 dark:bg-neutral-700 rounded-lg mb-3 flex items-center justify-center text-gray-400">
-                                <img src="{{ $item->image ?? 'https://placehold.co/150x128?text=No+Image' }}" 
+                                <img src="{{ 'https://placehold.co/150x128?text=No+Image' }}" 
                                     alt="{{ $item->name }}" 
                                     class="w-full h-full object-cover rounded-lg">
                             </div>
@@ -40,13 +40,16 @@
                             
                             <p class="text-sm text-gray-700 dark:text-gray-300 mt-1 font-bold">${{ number_format($item->selling_price, 2) }}</p>
                         </div>
-                        <button wire:click="addToCart({{ $item->id }})" class="w-full py-3 bg-indigo-600 text-white font-bold transition-colors duration-200 hover:bg-indigo-700 rounded-b-2xl">
+                        <button 
+                            wire:click="addToCart({{ $item->id }})"
+                            wire:loading.attr="disabled"
+                            class="w-full py-3 bg-indigo-600 text-white font-bold transition-colors duration-200 hover:bg-indigo-700 rounded-b-2xl">
                             Add to Cart
                         </button>
                     </div>
-
-                @endforeach
-
+                @empty
+                    <p class="col-span-full text-center text-gray-500 dark:text-gray-400 mt-8">No products found.</p>
+                @endforelse
 
                 <!-- Empty state -->
                 <!-- <p class="col-span-full text-center text-gray-500 dark:text-gray-400 mt-8">No products found.</p> -->
@@ -76,9 +79,6 @@
             @empty
                 <p class="text-center text-gray-400 dark:text-gray-500 mt-20">Your cart is empty.</p>
             @endforelse
-
-            <!-- Empty cart demo -->
-            <!-- <p class="text-center text-gray-400 dark:text-gray-500 mt-20">Your cart is empty.</p> -->
         </div>
 
         <!-- Checkout Summary -->
@@ -86,7 +86,7 @@
             <div class="space-y-2">
                 <div>
                     <label for="customer" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Customer</label>
-                    <select id="customer" class="py-2.5 mt-2 sm:py-3 px-4 block w-full border-gray-200 rounded-lg sm:text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-400">
+                    <select id="customer" class="py-2.5 mt-2 sm:py-3 px-4 block w-full border-gray-200 rounded-lg sm:text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-400" wire:model="customer_id">
                         <option>Select a customer</option>
                         @foreach ($customers as $customer)
                             <option value="{{ $customer->id }}">{{ $customer->name }}</option>
@@ -96,7 +96,7 @@
 
                 <div>
                     <label for="payment-method" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Payment Method</label>
-                    <select id="payment-method" class="py-2.5 mt-2 sm:py-3 px-4 block w-full border-gray-200 rounded-lg sm:text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-400">
+                    <select id="payment-method" class="py-2.5 mt-2 sm:py-3 px-4 block w-full border-gray-200 rounded-lg sm:text-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-400" wire:model="payment_method_id">
                         <option>Select a method</option>
                         @foreach ($paymentMethods as $paymentMethod)
                             <option value="{{ $paymentMethod->id }}">{{ $paymentMethod->name }}</option>
@@ -142,7 +142,7 @@
         <div class="flex-shrink-0 mt-6">
             <label for="paid_amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount Paid</label>
             <input type="number" min="0" wire:model.live="paid_amount" placeholder="Amount Paid" value="100" class="py-2.5 mt-2 sm:py-3 px-4 block w-full border-gray-200 rounded-lg sm:text-sm focus:border-blue-500 focus:ring-blue-500 mb-4 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-400">
-            <button class="w-full py-4 bg-green-600 text-white font-bold text-lg rounded-xl transition-colors duration-200 hover:bg-green-700 shadow-lg">
+            <button class="w-full py-4 bg-green-600 text-white font-bold text-lg rounded-xl transition-colors duration-200 hover:bg-green-700 shadow-lg" wire:click="checkout">
                 Complete Sale
             </button>
         </div>
